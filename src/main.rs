@@ -9,6 +9,7 @@ mod cli;
 mod message;
 mod smtp;
 mod store;
+mod tls;
 mod ui;
 
 use std::sync::Arc;
@@ -23,7 +24,16 @@ async fn main() -> anyhow::Result<()> {
 
     let (tx, rx) = mpsc::unbounded_channel();
     let counter = Arc::new(AtomicU64::new(1));
-    let binds = smtp::server::spawn_all(&cli.bind, &cli.ports, tx, counter).await;
+    let acceptor = tls::self_signed_acceptor()?;
+    let binds = smtp::server::spawn_all(
+        &cli.bind,
+        &cli.ports,
+        &cli.implicit_tls_ports,
+        tx,
+        counter,
+        acceptor,
+    )
+    .await;
 
     // Hand the terminal over to ratatui (raw mode + alternate screen) and make
     // sure we always restore it, even if the app loop errors out.

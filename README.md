@@ -41,8 +41,17 @@ Then send mail to one of the live ports — e.g. set your app's SMTP host to
 
 A permissive ESMTP conversation: `EHLO`/`HELO`, `MAIL`/`RCPT`/`DATA`,
 `RSET`/`NOOP`/`QUIT`, and `AUTH` (accepted unconditionally so authenticating
-clients still work). **Plaintext only** — there is no TLS/STARTTLS, so a
-TLS-only sender won't connect.
+clients still work).
+
+**TLS is supported** with a self-signed certificate generated at startup:
+
+- **STARTTLS** is offered on every plaintext port.
+- **Implicit TLS (SMTPS)** runs on the ports given by `--implicit-tls-ports`
+  (default `465`).
+
+Because the certificate is self-signed, **your client must disable certificate
+verification**. In the status bar, `●` marks a live plaintext/STARTTLS port, `🔒`
+a live implicit-TLS port, and `○` a port that couldn't be bound.
 
 Received messages are MIME-parsed: common headers, the text body, an
 HTML-rendered-to-text view, and an attachment summary, alongside the raw source.

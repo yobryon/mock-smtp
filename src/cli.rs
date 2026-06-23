@@ -23,4 +23,12 @@ pub struct Cli {
     /// Interface address to bind the listeners to.
     #[arg(short, long, default_value = "0.0.0.0")]
     pub bind: String,
+
+    /// Ports that use implicit TLS (SMTPS — TLS from the first byte).
+    ///
+    /// Every other listening port starts plaintext and offers STARTTLS. All TLS
+    /// is backed by a self-signed cert minted at startup, so clients must
+    /// disable certificate verification.
+    #[arg(long, value_delimiter = ',', default_values_t = [465u16])]
+    pub implicit_tls_ports: Vec<u16>,
 }

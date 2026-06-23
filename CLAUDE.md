@@ -12,6 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cargo run                       # launch the TUI on the default ports
 cargo run -- -p 1025,2525       # custom ports (comma-separated or repeated -p)
 cargo run -- -b 127.0.0.1       # bind a specific interface (default 0.0.0.0)
+cargo run -- --implicit-tls-ports 465,2465   # ports that use implicit TLS (SMTPS)
 cargo build --release           # optimized binary at target/release/mock-smtp
 
 cargo test                      # all tests
@@ -53,7 +54,12 @@ Key design points:
 - **Message ids** come from one process-wide `Arc<AtomicU64>` shared by every connection (`main.rs` → `spawn_all` → each session). The id doubles as the SMTP `250 OK: queued as N` token.
 - **Parsing happens once, at receive time** (`ReceivedMessage::parse`), never during draw — except HTML flattening (`rendered_view`), which depends on the live pane width and is recomputed per frame via `html2text`. The original bytes are kept in `raw` for the "Source"/"Headers" views, which slice the raw text rather than reconstructing from the parse tree.
 - **Listeners are best-effort.** A failed bind (privileged ports 25/465/587 need elevated privileges) is non-fatal: it becomes a `BindStatus { ok: false, error }` shown in the status bar / empty-inbox hint. The app runs on whatever ports it got.
-- **The SMTP server is intentionally permissive**, not RFC-strict. It speaks just enough to satisfy real clients: it advertises and **accepts any AUTH** (PLAIN/LOGIN, credentials read and discarded) so clients configured to authenticate still go through, and it refuses `STARTTLS` (`454`) — plaintext only, by design. There is no TLS support (no implicit-TLS on 465, no STARTTLS upgrade); a TLS-only sender won't connect.
+- **The SMTP server is intentionally permissive**, not RFC-strict. It speaks just enough to satisfy real clients: it advertises and **accepts any AUTH** (PLAIN/LOGIN, credentials read and discarded) so clients configured to authenticate still go through.
+- **TLS is supported via one self-signed cert** (`src/tls.rs`, minted at startup with `rcgen`, served by `tokio-rustls`). Two modes, both modeled by the `Transport` enum in `session.rs`:
+  - **Implicit TLS / SMTPS** — ports in `--implicit-tls-ports` (default `465`) handshake before any SMTP.
+  - **STARTTLS** — every other port starts plaintext, advertises `STARTTLS`, and upgrades in place on request.
+  The cert is self-signed, so **clients must disable certificate verification**. `spawn_all` listens on the *union* of `--ports` and `--implicit-tls-ports`, so an implicit-TLS port is always bound even if not also in `--ports`.
+- **One buffered handle, swappable transport.** Read and write both go through a single `BufReader<Transport>` (tokio's `BufReader` forwards `AsyncWrite` to its inner stream). A STARTTLS upgrade calls `into_inner()`, wraps the recovered `TcpStream` in TLS, and rebuilds the `BufReader` — the command loop never changes type. After writing a reply we always `flush()` (via the `reply` helper), because rustls otherwise leaves encrypted bytes buffered. Before upgrading, `stream.buffer()` must be empty — non-empty means a STARTTLS plaintext-injection attempt and the connection is dropped.
 
 ### Module map
 
@@ -61,8 +67,9 @@ Key design points:
 |------|----------------|
 | `main.rs` | Wire CLI → channel → listeners → TUI; own terminal init/restore |
 | `cli.rs` | clap args (`--ports`, `--bind`) |
-| `smtp/server.rs` | Bind ports, `BindStatus`, accept loop |
-| `smtp/session.rs` | Per-connection ESMTP state machine; DATA/dot-stuffing/AUTH; **tests live here** |
+| `smtp/server.rs` | Bind ports (union of plaintext + implicit-TLS), `BindStatus`, accept loop |
+| `smtp/session.rs` | Per-connection ESMTP state machine; `Transport` enum, DATA/dot-stuffing/AUTH/STARTTLS; **tests live here** |
+| `tls.rs` | Self-signed cert generation → `TlsAcceptor` |
 | `message.rs` | `ReceivedMessage` + `Envelope`; mail-parser MIME extraction; body views |
 | `store.rs` | In-memory newest-first `Vec` queue + ops |
 | `app.rs` | `App` state, `BodyView`, the select! event loop, key handling |

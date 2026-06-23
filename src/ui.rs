@@ -180,12 +180,12 @@ fn draw_body(frame: &mut Frame, app: &App, message: &ReceivedMessage, area: Rect
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let mut spans = vec![Span::styled(" Ports ", Style::new().fg(Color::Black).bg(ACCENT))];
     for bind in &app.binds {
-        let style = if bind.ok {
-            Style::new().fg(Color::Green)
-        } else {
-            Style::new().fg(Color::Red).add_modifier(Modifier::DIM)
+        // ● live plaintext (STARTTLS) · 🔒 live implicit-TLS · ○ skipped
+        let (mark, style) = match (bind.ok, bind.implicit_tls) {
+            (true, true) => ("🔒", Style::new().fg(Color::Magenta)),
+            (true, false) => ("●", Style::new().fg(Color::Green)),
+            (false, _) => ("○", Style::new().fg(Color::Red).add_modifier(Modifier::DIM)),
         };
-        let mark = if bind.ok { "●" } else { "○" };
         spans.push(Span::raw(" "));
         spans.push(Span::styled(format!("{mark}{}", bind.port), style));
     }
@@ -211,9 +211,13 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         Line::raw("  X            clear the whole queue"),
         Line::raw("  ? / q        toggle help / quit"),
         Line::raw(""),
+        Line::from(" TLS ".bold().fg(ACCENT)),
+        Line::raw("  ● plaintext + STARTTLS   🔒 implicit TLS   ○ skipped"),
+        Line::raw("  self-signed cert — disable cert verification in your client"),
+        Line::raw(""),
         Line::from("  press any key to dismiss".dim()),
     ];
-    let popup = centered_rect(64, 16, area);
+    let popup = centered_rect(66, 20, area);
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
         .title(" Help ");
